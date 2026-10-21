@@ -8,9 +8,10 @@ repositorio.
 
 from enum import StrEnum
 from functools import lru_cache
+from typing import Annotated
 
 from pydantic import Field, SecretStr, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Environment(StrEnum):
@@ -54,7 +55,10 @@ class Settings(BaseSettings):
     environment_name: str = "local"
 
     # Orígenes del panel web (lista separada por comas).
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5180"])
+    # NoDecode: se lee como texto "a,b" (lo separa _split), no como JSON.
+    cors_origins: Annotated[list[str], NoDecode] = Field(
+        default_factory=lambda: ["http://localhost:5180"]
+    )
     # Simulador de cliente en el panel (elegir un deudor y conversar como él).
     # En producción el canal (WhatsApp, web con sesión) identifica al cliente.
     chat_simulator: bool = True
