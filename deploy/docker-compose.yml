@@ -1,0 +1,56 @@
+# Entorno local del agente, independiente del portal de gobernanza.
+#   make up        → base, API (8100) y consola (5180)
+#   make init      → crea la empresa, el primer usuario y (opcional) se enrola
+# El portal se alcanza por la red del equipo: host.docker.internal:8000.
+name: agente
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: agente
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-agente_local}
+      POSTGRES_DB: agente
+    volumes:
+      - agente-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agente -d agente"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ..
+    environment:
+      APP_ENV: ${APP_ENV:-local}
+      DATABASE_URL: postgresql+psycopg://agente:${DB_PASSWORD:-agente_local}@postgres:5432/agente
+      SECRET_KEY: ${SECRET_KEY:-desarrollo-no-usar-en-produccion-0123456789abcdef}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      MODEL_PROVIDER: ${MODEL_PROVIDER:-}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-}
+      PLATAFORMA_URL: ${PLATAFORMA_URL:-http://host.docker.internal:8000}
+      ENVIRONMENT_NAME: ${ENVIRONMENT_NAME:-local}
+      CORS_ORIGINS: http://localhost:5180
+      CHAT_SIMULATOR: ${CHAT_SIMULATOR:-true}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "8100:8100"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ../web
+    ports:
+      - "5180:80"
+    depends_on:
+      - api
+
+volumes:
+  agente-data:

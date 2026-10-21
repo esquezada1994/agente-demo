@@ -1,0 +1,295 @@
+{
+  "id": "cobranza_preventiva",
+  "version": "1.0.0",
+  "name": "Agente de cobranza preventiva",
+  "description": "Prioriza la cartera, propone recordatorios que aprueba una persona, atiende a los clientes y registra promesas de pago.",
+  "language": "es",
+  "persona": {
+    "name": "Sofía",
+    "company": "Distribuidora Demo",
+    "tone": "cordial, breve y directo; trato de usted"
+  },
+  "models": {
+    "main": "gpt-4.1-mini",
+    "small": "gpt-4.1-nano"
+  },
+  "instructions": "Eres {persona}, asistente de cobranza de {empresa}. Tono: {tono}. Hoy es {hoy}.\nObjetivo: que el cliente conozca su saldo y se comprometa a una fecha de pago, sin presionarlo.\nReglas:\n- Usa solo datos que devuelvan las herramientas. Nunca inventes montos, fechas ni facturas.\n- Registra una promesa solo cuando el cliente confirme monto y fecha; la fecha no puede superar {max_dias_promesa} días.\n- No ofrezcas descuentos, condonaciones ni acuerdos: si el cliente pide cuotas, usa solicitar_acuerdo_pago para que lo revise un gestor.\n- Si el cliente dice que ya pagó o no reconoce la deuda, usa reportar_disputa.\n- Si pide hablar con una persona o está molesto, usa derivar_a_persona.\n- No pidas ni repitas datos personales (cédula, tarjeta).\n- Responde en máximo tres oraciones.",
+  "tools": [
+    {
+      "name": "consultar_estado_cuenta"
+    },
+    {
+      "name": "registrar_promesa"
+    },
+    {
+      "name": "solicitar_acuerdo_pago"
+    },
+    {
+      "name": "reportar_disputa"
+    },
+    {
+      "name": "derivar_a_persona"
+    },
+    {
+      "name": "enviar_factura"
+    }
+  ],
+  "sources": [
+    {
+      "identifier": "kb://cobranza/politicas",
+      "name": "Políticas y preguntas frecuentes de cobranza",
+      "kind": "document_library",
+      "usage": "retrieval",
+      "refresh_frequency": "monthly"
+    },
+    {
+      "identifier": "erp://cartera/facturas",
+      "name": "Cartera de facturas (ERP)",
+      "kind": "table",
+      "usage": "tool",
+      "refresh_frequency": "daily",
+      "data_categories": [
+        "personal",
+        "financial"
+      ]
+    }
+  ],
+  "policies": {
+    "retention_days": 180,
+    "contact_hours": "08:00-19:00",
+    "max_promise_days": 15,
+    "data_categories": [
+      "personal",
+      "financial"
+    ]
+  },
+  "value": {
+    "hours_per_resolved_conversation": 0.2,
+    "hours_per_reminder": 0.08
+  },
+  "flows": {
+    "chat": {
+      "nodes": [
+        {
+          "id": "entrada",
+          "type": "input_guard",
+          "label": "Revisar entrada",
+          "config": {
+            "pii": "mask",
+            "block_injection": true
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "buscar",
+          "type": "retrieve",
+          "label": "Buscar en políticas",
+          "config": {
+            "source": "kb://cobranza/politicas",
+            "top_k": 3,
+            "only_if_keywords": [
+              "como",
+              "donde",
+              "banco",
+              "transfer",
+              "deposit",
+              "horario",
+              "interes",
+              "mora",
+              "politica",
+              "formas de pago",
+              "comprobante",
+              "pagar"
+            ]
+          },
+          "position": {
+            "x": 220,
+            "y": 0
+          }
+        },
+        {
+          "id": "agente",
+          "type": "llm",
+          "label": "Razonar y decidir",
+          "config": {
+            "model": "main",
+            "max_steps": 4,
+            "tools": [
+              "consultar_estado_cuenta",
+              "registrar_promesa",
+              "solicitar_acuerdo_pago",
+              "reportar_disputa",
+              "derivar_a_persona",
+              "enviar_factura"
+            ]
+          },
+          "position": {
+            "x": 440,
+            "y": 0
+          }
+        },
+        {
+          "id": "herramientas",
+          "type": "tools",
+          "label": "Ejecutar herramientas",
+          "position": {
+            "x": 440,
+            "y": 160
+          }
+        },
+        {
+          "id": "validar",
+          "type": "validate",
+          "label": "Validar respuesta",
+          "config": {
+            "checks": [
+              "personal_data",
+              "policy",
+              "grounding"
+            ]
+          },
+          "position": {
+            "x": 660,
+            "y": 0
+          }
+        },
+        {
+          "id": "responder",
+          "type": "respond",
+          "label": "Responder",
+          "position": {
+            "x": 880,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [
+        {
+          "from": "START",
+          "to": "entrada"
+        },
+        {
+          "from": "entrada",
+          "to": "buscar",
+          "when": "ok"
+        },
+        {
+          "from": "entrada",
+          "to": "responder",
+          "when": "blocked"
+        },
+        {
+          "from": "buscar",
+          "to": "agente"
+        },
+        {
+          "from": "agente",
+          "to": "herramientas",
+          "when": "tool_calls"
+        },
+        {
+          "from": "agente",
+          "to": "validar",
+          "when": "final"
+        },
+        {
+          "from": "herramientas",
+          "to": "agente"
+        },
+        {
+          "from": "validar",
+          "to": "responder"
+        },
+        {
+          "from": "responder",
+          "to": "END"
+        }
+      ]
+    },
+    "reminder": {
+      "nodes": [
+        {
+          "id": "redactar",
+          "type": "llm",
+          "label": "Redactar recordatorio",
+          "config": {
+            "model": "small",
+            "instructions": "Redacta un recordatorio de pago para el cliente descrito en el mensaje (JSON). Tono: {tono}. Máximo dos oraciones, en nombre de {empresa}. Si tipo es 'preventive', la factura aún no vence: recuerda la fecha sin presionar. Si está vencida, invita a indicar una fecha de pago. No incluyas datos personales, números de factura completos ni ofrezcas descuentos."
+          },
+          "position": {
+            "x": 0,
+            "y": 0
+          }
+        },
+        {
+          "id": "validar",
+          "type": "validate",
+          "label": "Validar texto",
+          "config": {
+            "checks": [
+              "personal_data",
+              "policy"
+            ]
+          },
+          "position": {
+            "x": 220,
+            "y": 0
+          }
+        },
+        {
+          "id": "aprobar",
+          "type": "approval",
+          "label": "Aprobación del gestor",
+          "config": {
+            "kind": "reminder",
+            "channel": "whatsapp"
+          },
+          "position": {
+            "x": 440,
+            "y": 0
+          }
+        },
+        {
+          "id": "cerrar",
+          "type": "respond",
+          "label": "Cerrar",
+          "position": {
+            "x": 660,
+            "y": 0
+          }
+        }
+      ],
+      "edges": [
+        {
+          "from": "START",
+          "to": "redactar"
+        },
+        {
+          "from": "redactar",
+          "to": "validar",
+          "when": "final"
+        },
+        {
+          "from": "redactar",
+          "to": "validar",
+          "when": "tool_calls"
+        },
+        {
+          "from": "validar",
+          "to": "aprobar"
+        },
+        {
+          "from": "aprobar",
+          "to": "cerrar"
+        },
+        {
+          "from": "cerrar",
+          "to": "END"
+        }
+      ]
+    }
+  }
+}

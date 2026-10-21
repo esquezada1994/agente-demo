@@ -1,0 +1,74 @@
+@import 'tailwindcss';
+
+/*
+ * Tokens. El color de marca (--brand) lo escribe la consola con el color que
+ * define la empresa en Ajustes; todo lo demás es neutro o semántico, con
+ * versión clara y oscura.
+ */
+:root {
+  --brand: #0f766e;
+  --surface: #f5f6f4;
+  --card: #ffffff;
+  --ink: #1b2420;
+  --muted: #5d6863;
+  --border: #dfe3df;
+  --ok-bg: #e4f2e8;
+  --ok-fg: #1d6b3a;
+  --warn-bg: #fbf0d6;
+  --warn-fg: #7a4d00;
+  --bad-bg: #fbe2df;
+  --bad-fg: #8f1f17;
+  --info-bg: #e5eef7;
+  --info-fg: #24508a;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #101513;
+    --card: #171e1b;
+    --ink: #e4ebe7;
+    --muted: #9aa7a1;
+    --border: #27312d;
+    --ok-bg: #12301f;
+    --ok-fg: #8fd8a8;
+    --warn-bg: #352707;
+    --warn-fg: #f1cf7a;
+    --bad-bg: #3d1616;
+    --bad-fg: #f6a5a0;
+    --info-bg: #13263d;
+    --info-fg: #9cc3f2;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-brand: var(--brand);
+  --color-brand-soft: color-mix(in srgb, var(--brand) 12%, var(--card));
+  --color-surface: var(--surface);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-ok-bg: var(--ok-bg);
+  --color-ok-fg: var(--ok-fg);
+  --color-warn-bg: var(--warn-bg);
+  --color-warn-fg: var(--warn-fg);
+  --color-bad-bg: var(--bad-bg);
+  --color-bad-fg: var(--bad-fg);
+  --color-info-bg: var(--info-bg);
+  --color-info-fg: var(--info-fg);
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, monospace;
+}
+
+body {
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
