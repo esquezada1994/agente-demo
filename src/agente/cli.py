@@ -166,15 +166,40 @@ def demo_traffic(conversations: int = 20, seed: int = 3) -> None:
         from agente.domain import collections
 
         items = [i for i in collections.portfolio(session, services.today()) if i.total_balance > 0]
+    if not items:
+        typer.secho(
+            "No hay clientes con saldo pendiente en la base del agente. "
+            "Si se borró la base (make reset), ejecuta `make init` con un token nuevo.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
     for _ in range(conversations):
         item = rng.choice(items)
-        text = rng.choice(MESSAGES).replace("{amount}", str(rng.randint(40, 400)))
+        # El monto nunca supera el saldo: la herramienta rechazaría la promesa.
+        amount = max(min(rng.randint(40, 400), int(item.total_balance)), 1)
+        text = rng.choice(MESSAGES).replace("{amount}", str(amount))
         with session_scope() as session:
             reply = services.chat(session, item.customer.id, text)
+        tools = list(reply.tools)
+        # Un modelo real pide confirmar monto y fecha antes de registrar la
+        # promesa (así lo dicen sus instrucciones): el cliente confirma.
+        is_promise = "$" in text and ("pag" in text.lower())
+        for _attempt in range(2):
+            if not is_promise or "registrar_promesa" in tools or reply.outcome == "escalated":
+                break
+            with session_scope() as session:
+                reply = services.chat(
+                    session,
+                    item.customer.id,
+                    f"Sí, confirmo: pagaré ${amount} en la fecha que le indiqué.",
+                    reply.conversation_id,
+                )
+            tools += reply.tools
         if rng.random() < 0.3:
             with session_scope() as session:
                 services.rate(session, reply.message_id, 1 if reply.outcome == "resolved" else -1)
-        typer.echo(f"{item.customer.code}: {text} → {reply.outcome}")
+        used = f" [{', '.join(tools)}]" if tools else ""
+        typer.echo(f"{item.customer.code}: {text} → {reply.outcome}{used}")
     _flush()
 
 

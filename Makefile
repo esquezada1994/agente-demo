@@ -48,8 +48,8 @@ reminders: ## El agente redacta recordatorios para la bandeja de aprobación
 	$(COMPOSE) run --rm api agente prepare-reminders --limit 10
 
 .PHONY: payments
-payments: ## SIMULACIÓN: avanza 7 días y registra pagos de promesas
-	$(COMPOSE) run --rm api agente simulate-payments --days 7
+payments: ## SIMULACIÓN: avanza 15 días (plazo máximo de una promesa) y registra pagos
+	$(COMPOSE) run --rm api agente simulate-payments --days 15
 
 .PHONY: dev-api
 dev-api: ## API con recarga automática (requiere Postgres en 5433: make up)
