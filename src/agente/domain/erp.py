@@ -177,3 +177,30 @@ def seed_erp(session: Session, today: date, seed: int = 11) -> int:
             )
     session.flush()
     return len(names)
+
+
+def refresh_demo_invoices(session: Session, today: date, seed: int | None = None) -> int:
+    """SIMULACIÓN: si la cartera quedó sin saldo (todo pagado), emite facturas
+    nuevas para los clientes de prueba, con vencimientos alrededor de hoy."""
+    rng = random.Random(seed)  # noqa: S311 - datos sintéticos
+    customers = list(session.scalars(select(ErpCustomer)))
+    last = session.scalar(select(func.count()).select_from(ErpInvoice)) or 0
+    created = 0
+    for customer in customers:
+        for _ in range(rng.randint(1, 3)):
+            last += 1
+            due_in = rng.choice([-45, -30, -20, -10, -5, 2, 4, 7])
+            amount = Decimal(rng.randint(80, 4200)) + Decimal(rng.randint(0, 99)) / 100
+            session.add(
+                ErpInvoice(
+                    customer_id=customer.id,
+                    number=f"001-003-{last:09d}",
+                    issue_date=today + timedelta(days=due_in - 30),
+                    due_date=today + timedelta(days=due_in),
+                    amount=amount,
+                    balance=amount,
+                )
+            )
+            created += 1
+    session.flush()
+    return created

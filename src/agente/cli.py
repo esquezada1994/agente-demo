@@ -14,12 +14,20 @@ import random
 from typing import Annotated
 
 import typer
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from agente import migrations, services
 from agente.config import get_settings
-from agente.db import Setting, User, session_scope
-from agente.domain.erp import seed_erp
+from agente.db import (
+    Conversation,
+    ErpCustomer,
+    ErpInvoice,
+    PaymentPromise,
+    Setting,
+    User,
+    session_scope,
+)
+from agente.domain.erp import refresh_demo_invoices, seed_erp
 from agente.engine import governance, store
 from agente.knowledge.seed import seed_documents
 from agente.security import generate_password, hash_password
@@ -143,6 +151,69 @@ def simulate_payments(days: int = 7) -> None:
     _flush()
 
 
+def _ensure_demo_data() -> str:
+    """Deja clientes con saldo pendiente para probar. Devuelve qué hizo."""
+    today = services.today()
+    with session_scope() as session:
+        seed_documents(session)
+        if not session.scalar(select(func.count()).select_from(ErpCustomer)):
+            return f"Clientes de prueba creados: {seed_erp(session, today)}"
+        pending = session.scalar(
+            select(func.count()).select_from(ErpInvoice).where(ErpInvoice.balance > 0)
+        )
+        if not pending:
+            return f"Facturas de prueba nuevas: {refresh_demo_invoices(session, today)}"
+    return "La cartera de prueba ya tiene saldos pendientes"
+
+
+@app.command("demo-data")
+def demo_data() -> None:
+    """Crea o renueva la cartera de prueba (clientes y facturas sintéticas)."""
+    typer.secho(_ensure_demo_data(), fg=typer.colors.GREEN)
+
+
+@app.command()
+def status() -> None:
+    """Estado de esta instalación: modelo, portal, usuarios y datos."""
+    settings = get_settings()
+    with session_scope() as session:
+        users = session.scalar(select(func.count()).select_from(User)) or 0
+        customers = session.scalar(select(func.count()).select_from(ErpCustomer)) or 0
+        pending = (
+            session.scalar(
+                select(func.count(func.distinct(ErpInvoice.customer_id))).where(
+                    ErpInvoice.balance > 0
+                )
+            )
+            or 0
+        )
+        conversations = session.scalar(select(func.count()).select_from(Conversation)) or 0
+        promises = session.scalar(select(func.count()).select_from(PaymentPromise)) or 0
+        portal = governance.connection_info(session)
+    typer.echo(f"Modelo:                 {settings.effective_model_provider.value}")
+    typer.echo(
+        "Portal:                 "
+        + (
+            f"conectado como {portal['solution']} ({portal['tenant']})"
+            if portal
+            else "NO conectado"
+        )
+    )
+    typer.echo(f"Usuarios:               {users}")
+    typer.echo(f"Clientes de prueba:     {customers} ({pending} con saldo pendiente)")
+    typer.echo(f"Conversaciones:         {conversations}")
+    typer.echo(f"Promesas de pago:       {promises}")
+    if not users:
+        typer.secho(
+            "→ Base vacía: ejecuta `make init` (con un token nuevo del portal).",
+            fg=typer.colors.YELLOW,
+        )
+    elif not portal:
+        typer.secho("→ Sin portal: `make enroll ENROLL_TOKEN=ge_…`", fg=typer.colors.YELLOW)
+    elif not pending:
+        typer.secho("→ Sin saldos: `make demo-data`", fg=typer.colors.YELLOW)
+
+
 MESSAGES = [
     "Hola, ¿cuánto debo?",
     "¿Cuál es mi saldo pendiente?",
@@ -167,12 +238,13 @@ def demo_traffic(conversations: int = 20, seed: int = 3) -> None:
 
         items = [i for i in collections.portfolio(session, services.today()) if i.total_balance > 0]
     if not items:
-        typer.secho(
-            "No hay clientes con saldo pendiente en la base del agente. "
-            "Si se borró la base (make reset), ejecuta `make init` con un token nuevo.",
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(1)
+        typer.secho(_ensure_demo_data(), fg=typer.colors.YELLOW)
+        with session_scope() as session:
+            from agente.domain import collections
+
+            items = [
+                i for i in collections.portfolio(session, services.today()) if i.total_balance > 0
+            ]
     for _ in range(conversations):
         item = rng.choice(items)
         # El monto nunca supera el saldo: la herramienta rechazaría la promesa.

@@ -39,6 +39,14 @@ init: ## Crea la empresa y el primer usuario; se enrola si hay ENROLL_TOKEN
 enroll: ## Conecta al portal: make enroll ENROLL_TOKEN=ge_…
 	$(COMPOSE) run --rm api agente enroll --plataforma "$(PLATAFORMA_URL)" --token "$(ENROLL_TOKEN)"
 
+.PHONY: status
+status: ## Estado del agente: modelo, conexión al portal, usuarios y datos
+	$(COMPOSE) run --rm api agente status
+
+.PHONY: demo-data
+demo-data: ## Crea o renueva la cartera de prueba (si quedó sin saldos)
+	$(COMPOSE) run --rm api agente demo-data
+
 .PHONY: demo-traffic
 demo-traffic: ## Genera 30 conversaciones de prueba
 	$(COMPOSE) run --rm api agente demo-traffic --conversations 30
